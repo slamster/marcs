@@ -2,5 +2,5 @@
 Mike's Automated Rubiks Cube Solver
 
 ## Authors
-slamster
-benv666
+* slamster
+* benv666
