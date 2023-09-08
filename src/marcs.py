@@ -1,11 +1,17 @@
 #!/usr/bin/python
 # TODO: clean this code and split in classes
 
-from time import sleep
+from time import sleep, time
 import RPi.GPIO as GPIO
 from adafruit_servokit import ServoKit    #https://circuitpython.readthedocs.io/projects/servokit/en/latest/
+from enum import Enum
+#from picamera import PiCamera
+ # - picamera is broken on 64 bit, garbage
+
 # this thing needs root, wtf
 #import keyboard
+
+from picamera2 import Picamera2
 
 DIR = 17   # Direction GPIO Pin
 STEP = 27  # Step GPIO Pin
@@ -17,9 +23,40 @@ SPR = 1600   # Steps per Revolution 1.8 degree from stepper which implies 200 pe
 #DELAY = .0001 # delay between steps, tested up to 0.0001 with success (faster probably still fine, but starts jerking cube)
 DELAY = .002 # delay between steps, tested up to 0.0001 with success (faster probably still fine, but starts jerking cube)
 CLOSE_OK_PIN = 4 # GPIO pin that has sensor, if red light on it's ok
+INPUT_BUTTON = 23 # GPIO pin that input button
 
 pca = ServoKit(channels=16)
 
+camera = Picamera2()
+
+class LidState(Enum):
+    UNKNOWN = 0
+    OPEN = 1
+    CLOSED = 2
+
+lid = LidState.UNKNOWN
+
+def buttonCallback(channel):
+    global lid
+    print(f"\nButton pressed! [channel {channel}] lid [{lid}], making snapshot....")
+    #if lid == LidState.UNKNOWN:
+    #    print("unknown -> Opening")
+    #    openLid()
+    #elif lid == LidState.OPEN:
+    #    print("open -> closing")
+    #    closeLid()
+    #elif lid == LidState.CLOSED:
+    #    print("closed -> opening")
+    #    openLid()
+    #else:
+    #    printf("Unpossible.")
+    
+    outdir = "/home/pi/www"
+    #outfile = f"marcs-{int(time())}.png"
+    outfile = f"marcs-latest.png"
+    #camera.capture(outdir + "/" + outfile, format="png")
+    camera.capture_file(outdir + "/" + outfile, format="png")
+    print(f"Output written to [{outdir + '/' + outfile}] -> http://192.168.178.131/{outfile}")
 
 def init():
     GPIO.setmode(GPIO.BCM)
@@ -28,6 +65,7 @@ def init():
     GPIO.setup(STEP, GPIO.OUT)
     GPIO.setup(MS2, GPIO.OUT)
     GPIO.setup(EN, GPIO.OUT)
+    GPIO.setup(INPUT_BUTTON, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     GPIO.setup(CLOSE_OK_PIN, GPIO.IN)
     GPIO.output(DIR, CW)
 
@@ -40,6 +78,14 @@ def init():
     pca.servo[15].set_pulse_width_range(500, 2500)
     pca.servo[14].set_pulse_width_range(500, 2500)
 
+    # Camera init
+    camconfig = camera.create_still_configuration(main={"size": (800, 600)})
+    camera.configure(camconfig)
+    camera.set_controls({"AnalogueGain": 1, "ColourGains": (1.0,1.0)})
+    camera.start()
+
+    # Button interrupt
+    GPIO.add_event_detect(INPUT_BUTTON, GPIO.FALLING, callback=buttonCallback, bouncetime=400)
 	# Calibrate so we have a known starting position
     calibrate()
 
@@ -128,8 +174,10 @@ def setMotorAngle(a, motor=15):
 	sleep(1)
 
 def openLid():
-	print("Opening lid...")
-	setMotorAngle(50, motor=15)
+    global lid
+    print("Opening lid...")
+    setMotorAngle(50, motor=15)
+    lid = LidState.OPEN
 
 def isRedLightOn():
 	# GPIO 4
@@ -149,13 +197,15 @@ def calibrate():
 
 
 def closeLid():
-	print("Closing lid...")
-	# Only allow if Red light indicator is enabled (on)
-	# Only the 4 slits should indicate proper position, so closing otherwise might break stuff :)
-	if isRedLightOn():
-		setMotorAngle(87, motor=15)
-	else:
-		print(f"Warning: can not close as indicator is not enabled!")
+    global lid
+    print("Closing lid...")
+    # Only allow if Red light indicator is enabled (on)
+    # Only the 4 slits should indicate proper position, so closing otherwise might break stuff :)
+    if isRedLightOn():
+        setMotorAngle(87, motor=15)
+        lid = LidState.OPEN
+    else:
+        print(f"Warning: can not close as indicator is not enabled!")
 
 def bumper():
 	# Require open AND redlight check
@@ -169,6 +219,8 @@ def bumper():
 	setMotorAngle(70, motor=14)
 
 def cleanup():
+    camera.stop()
+
     GPIO.output(EN, GPIO.HIGH)
     GPIO.cleanup()
     pca.servo[15].angle=None #disable channel
