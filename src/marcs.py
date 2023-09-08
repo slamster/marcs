@@ -13,6 +13,20 @@ from enum import Enum
 
 from picamera2 import Picamera2
 
+# Our own stuff
+from modules.image.process import Process
+
+from modules.face.facecolors import FaceColor
+from modules.cube.rubikscube import RubiksCube
+cube = RubiksCube()
+white_face_colors = [
+    [FaceColor.ORANGE, FaceColor.GREEN, FaceColor.RED],
+    [FaceColor.ORANGE, FaceColor.WHITE, FaceColor.RED],
+    [FaceColor.ORANGE, FaceColor.BLUE, FaceColor.RED]
+]
+cube.set_face_colors(FaceColor.WHITE, white_face_colors)
+cube.display()
+
 DIR = 17   # Direction GPIO Pin
 STEP = 27  # Step GPIO Pin
 EN = 22    # Enable
@@ -55,8 +69,9 @@ def buttonCallback(channel):
     #outfile = f"marcs-{int(time())}.png"
     outfile = f"marcs-latest.png"
     #camera.capture(outdir + "/" + outfile, format="png")
-    camera.capture_file(outdir + "/" + outfile, format="png")
-    print(f"Output written to [{outdir + '/' + outfile}] -> http://192.168.178.131/{outfile}")
+    la = camera.capture_file(outdir + "/" + outfile, format="png")
+    print(f"Output written to [{outdir + '/' + outfile}] -> http://192.168.178.131/{outfile} la:{la}")
+    Process.detectCube(outdir + '/' + outfile)
 
 def init():
     GPIO.setmode(GPIO.BCM)
