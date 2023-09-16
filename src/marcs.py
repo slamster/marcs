@@ -71,7 +71,7 @@ def buttonCallback(channel):
     #camera.capture(outdir + "/" + outfile, format="png")
     la = camera.capture_file(outdir + "/" + outfile, format="png")
     print(f"Output written to [{outdir + '/' + outfile}] -> http://192.168.178.131/{outfile} la:{la}")
-    Process.detectCube(outdir + '/' + outfile)
+    Process(outdir + '/' + outfile).detectCube()
 
 def init():
     GPIO.setmode(GPIO.BCM)

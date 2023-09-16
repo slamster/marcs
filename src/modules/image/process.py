@@ -1,16 +1,40 @@
+from modules.face.facecolors import FaceColor
+
 import cv2
 import numpy as np
 import logging
 
 class Process:
-  @staticmethod
-  def detectCube(img):
+  def __init__(self, image):
+    self.image = image
+    self.color_names = [color.name for color in FaceColor]
+
+  def get_contour_color(self, img, contour):
+    # Create a mask for the contour
+    mask = np.zeros_like(img)
+    cv2.drawContours(mask, [contour], 0, (255, 255, 255), thickness=cv2.FILLED)
+
+    # Calculate the average color within the contour
+    masked_image = cv2.bitwise_and(img, mask)
+    average_color = np.mean(masked_image, axis=(0, 1))
+
+    # Find the closest color from the predefined color values
+    #closest_color = min(colors, key=lambda key: np.linalg.norm(average_color - colors[key]))
+    closest_color = min(self.color_names, key=lambda key: np.linalg.norm(average_color - FaceColor[key].rgb() ))
+
+    return closest_color
+
+  def detectCube(self):
     """
     Crops image to cube and returns it (overwrites image)
     """
     print("Detecting cube....")
-    image = cv2.imread(img)
+    image = cv2.imread(self.image)
+    org_image = image.copy()
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray_image = cv2.equalizeHist(gray_image)
+    #gray_image = cv2.convertScaleAbs(gray_image, alpha=1.2, beta=30)  
+
     blurred_image = cv2.GaussianBlur(gray_image, (7, 7), 0)
     edges = cv2.Canny(blurred_image, 00, 100)  # Adjust the thresholds as needed
     raw_contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -61,6 +85,8 @@ class Process:
       print(f"Contour has {cv2.contourArea(c)} as area, vertices {len(approx)} and aspect ratio {aspect_ratio}")
       contours.append(c)
     
+    # Sort them
+    contours = sorted(contours, key=lambda contour: cv2.boundingRect(contour)[1])
 
     # Print the remaining
     for c in contours:
@@ -69,8 +95,24 @@ class Process:
     #x, y, w, h = cv2.boundingRect(black_contour)
     #cropped_image = image[y:y+h, x:x+w]
     #cv2.drawContours(image, [black_contour], -1, (0, 255, 0), 2)
-    cv2.imwrite(img, image)
+
+    #cv2.imwrite(self.image, image)
     print("Cube contour added")
+
+    # Sanity check, we should have 9 faces
+    if len(contours) != 9:
+        print(f"Only found {len(contours)} faces you should retry....")
+        return contours
+
+    # Let's determine colors from contours
+    # loop over the contours
+    for c in contours:
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        ccolor = self.get_contour_color(org_image, c)
+        print(f"Contour has color: {ccolor}")
+        x, y, w, h = cv2.boundingRect(c)
+        cv2.putText(image, ccolor, (x, y + 30), font, 1, (0,0,0), 2, cv2.LINE_AA)
+    cv2.imwrite(self.image, image)
 
   def detectWhite(img):
     """
