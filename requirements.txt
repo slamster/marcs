@@ -2,3 +2,4 @@ opencv-python-headless
 numpy
 adafruit-circuitpython-servokit
 picamera2
+colormath

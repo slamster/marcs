@@ -9,19 +9,38 @@ class Process:
     self.image = image
     self.color_names = [color.name for color in FaceColor]
 
+  def apply_white_balance(self, img):
+      # Calculate the average color of the image
+      avg_color = np.mean(img, axis=(0, 1))
+  
+      # Calculate the scaling factors for each color channel
+      scale_factors = 128.0 / avg_color
+  
+      # Apply the scaling factors to each color channel
+      balanced_image = img * scale_factors
+  
+      # Clip the values to ensure they stay within the valid range (0-255)
+      balanced_image = np.clip(balanced_image, 0, 255).astype(np.uint8)
+  
+      return balanced_image
+  
+
   def get_contour_color(self, img, contour):
     # Create a mask for the contour
-    mask = np.zeros_like(img)
-    cv2.drawContours(mask, [contour], 0, (255, 255, 255), thickness=cv2.FILLED)
+    mask = np.zeros(img.shape[:2], img.dtype)
+    #cv2.drawContours(mask, [contour], 0, (255, 255, 255), thickness=cv2.FILLED)
+    cv2.drawContours(mask, [contour], 0, 255, thickness=cv2.FILLED)
+    print(f"Mask {mask.shape} and {mask.dtype} vs image {img.shape} and {img.dtype}")
 
     # Calculate the average color within the contour
-    masked_image = cv2.bitwise_and(img, mask)
-    average_color = np.mean(masked_image, axis=(0, 1))
+    masked_image = cv2.bitwise_and(img, img, mask=mask)
+    average_color_bgr = cv2.mean(img, mask=mask)[0:3] # drop alpha channel
+    #average_color_bgr = np.mean(masked_image, axis=(0, 1))
+    average_color = average_color_bgr[::-1]
 
-    # Find the closest color from the predefined color values
-    #closest_color = min(colors, key=lambda key: np.linalg.norm(average_color - colors[key]))
-    closest_color = min(self.color_names, key=lambda key: np.linalg.norm(average_color - FaceColor[key].rgb() ))
-
+    # Get the closest color from the face color class:
+    closest_color = FaceColor.from_rgb(average_color)
+    print(f"Avg color is {average_color}, which converts to {closest_color}")
     return closest_color
 
   def detectCube(self):
@@ -31,6 +50,10 @@ class Process:
     print("Detecting cube....")
     image = cv2.imread(self.image)
     org_image = image.copy()
+    wb_image = self.apply_white_balance(image)
+    image = wb_image.copy()
+    org_image = wb_image.copy()
+    cv2.imwrite("/home/pi/www/marcs-latest-wb.png"  , wb_image)
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray_image = cv2.equalizeHist(gray_image)
     #gray_image = cv2.convertScaleAbs(gray_image, alpha=1.2, beta=30)  
@@ -91,18 +114,20 @@ class Process:
     # Print the remaining
     for c in contours:
       cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
+    print("Cube contour added")
 
     #x, y, w, h = cv2.boundingRect(black_contour)
     #cropped_image = image[y:y+h, x:x+w]
     #cv2.drawContours(image, [black_contour], -1, (0, 255, 0), 2)
 
     #cv2.imwrite(self.image, image)
-    print("Cube contour added")
 
-    # Sanity check, we should have 9 faces
-    if len(contours) != 9:
-        print(f"Only found {len(contours)} faces you should retry....")
-        return contours
+    # TEST: drop all but the first so we can get the colors correct first.
+    #contours = contours[:1]
+    ## Sanity check, we should have 9 faces
+    #if len(contours) != 9:
+    #    print(f"Only found {len(contours)} faces you should retry....")
+    #    return contours
 
     # Let's determine colors from contours
     # loop over the contours
@@ -111,7 +136,7 @@ class Process:
         ccolor = self.get_contour_color(org_image, c)
         print(f"Contour has color: {ccolor}")
         x, y, w, h = cv2.boundingRect(c)
-        cv2.putText(image, ccolor, (x, y + 30), font, 1, (0,0,0), 2, cv2.LINE_AA)
+        cv2.putText(image, str(ccolor), (x, y + 30), font, 1, (0,0,0), 2, cv2.LINE_AA)
     cv2.imwrite(self.image, image)
 
   def detectWhite(img):

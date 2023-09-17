@@ -69,8 +69,12 @@ def buttonCallback(channel):
     #outfile = f"marcs-{int(time())}.png"
     outfile = f"marcs-latest.png"
     #camera.capture(outdir + "/" + outfile, format="png")
-    la = camera.capture_file(outdir + "/" + outfile, format="png")
-    print(f"Output written to [{outdir + '/' + outfile}] -> http://192.168.178.131/{outfile} la:{la}")
+    res = camera.capture_file(outdir + "/" + outfile, format="png")
+    from pprint import pprint
+    pprint(res)
+    if res["Lux"] < 100:
+      print(f"!!! WARNING: Low light levels! Might cause failure! {res['Lux']}")
+    print(f"Output written to [{outdir + '/' + outfile}] -> http://192.168.178.131/{outfile} res:{res}")
     Process(outdir + '/' + outfile).detectCube()
 
 def init():
