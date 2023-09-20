@@ -3,12 +3,31 @@ from modules.face.facecolors import FaceColor
 import cv2
 import numpy as np
 import logging
+from skimage import img_as_ubyte
 
 class Process:
   def __init__(self, image):
     self.image = image
     self.color_names = [color.name for color in FaceColor]
 
+  def apply_whitebalance_patch(self, image, from_row, from_column, row_width, column_width):
+      image = image.copy().astype(np.float64)
+      image_patch = image[from_row:from_row+row_width, from_column:from_column+column_width]
+      image_max = (image*1.0 / image_patch.max(axis=(0, 1))).clip(0, 1)
+      print(f"WHITE BALANCE: Max {image_max.max(axis=(0,1))}")
+      # back to uint8:
+      balanced_image = img_as_ubyte(image_max)
+      #cv2.imwrite("/home/pi/www/marcs-latest-wb.png"  , balanced_image)
+      return balanced_image
+
+  def percentile_whitebalance(self, image, percentile_value):
+      # TODO: Fix
+      percentile = np.percentile(image.copy(), percentile_value, axis=(0, 1))
+      balanced_image = image / percentile
+      balanced_image = np.clip(balanced_image, 0, 255).astype(np.uint8)
+
+      return balanced_image
+  
   def apply_white_balance(self, img):
       # Calculate the average color of the image
       avg_color = np.mean(img, axis=(0, 1))
@@ -17,7 +36,7 @@ class Process:
       scale_factors = 128.0 / avg_color
   
       # Apply the scaling factors to each color channel
-      balanced_image = img * scale_factors
+      balanced_image = img.copy() * scale_factors
   
       # Clip the values to ensure they stay within the valid range (0-255)
       balanced_image = np.clip(balanced_image, 0, 255).astype(np.uint8)
@@ -35,11 +54,13 @@ class Process:
     # Calculate the average color within the contour
     masked_image = cv2.bitwise_and(img, img, mask=mask)
     average_color_bgr = cv2.mean(img, mask=mask)[0:3] # drop alpha channel
+    #average_color_bgr = cv2.median(img, mask=mask)[0:3] # drop alpha channel
     #average_color_bgr = np.mean(masked_image, axis=(0, 1))
     average_color = average_color_bgr[::-1]
 
     # Get the closest color from the face color class:
     closest_color = FaceColor.from_rgb(average_color)
+    #closest_color = FaceColor.from_rgb2(average_color)
     print(f"Avg color is {average_color}, which converts to {closest_color}")
     return closest_color
 
@@ -50,10 +71,22 @@ class Process:
     print("Detecting cube....")
     image = cv2.imread(self.image)
     org_image = image.copy()
-    wb_image = self.apply_white_balance(image)
+    #wb_image = self.apply_white_balance(image)
+    #wb_image = self.percentile_whitebalance(image, 97.5)
+    # 800x600 image, center bottom has white square -> 400,580
+    #wb_image = self.apply_whitebalance_patch(image.copy(), 400, 580, 20, 20)
+    # Draw rectangle we used:
+    #cv2.rectangle(wb_image,(400,580),(420,600),(0,0,255),2) # white square for white point
+    #cv2.rectangle(wb_image,(335,530),(345,540),(0,255,255),2) # black square?
+    # Alternate white patch
+    #wb_image = self.apply_whitebalance_patch(image.copy(), 0, 0, 20, 20)
+    #cv2.rectangle(wb_image,(0,0),(20,20),(0,0,255),2) # white square for white point
+    wb_image = self.apply_whitebalance_patch(image.copy(), 400, 550, 20, 20)
+    cv2.rectangle(wb_image,(400,550),(420,570),(0,0,255),2) # white square for white point
+
     image = wb_image.copy()
-    org_image = wb_image.copy()
-    cv2.imwrite("/home/pi/www/marcs-latest-wb.png"  , wb_image)
+    #org_image = wb_image.copy()
+    #cv2.imwrite("/home/pi/www/marcs-latest-wb.png"  , wb_image)
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray_image = cv2.equalizeHist(gray_image)
     #gray_image = cv2.convertScaleAbs(gray_image, alpha=1.2, beta=30)  
@@ -131,12 +164,14 @@ class Process:
 
     # Let's determine colors from contours
     # loop over the contours
+    color_detect_image = cv2.GaussianBlur(org_image, (7, 7), 0)
     for c in contours:
         font = cv2.FONT_HERSHEY_SIMPLEX
-        ccolor = self.get_contour_color(org_image, c)
+        #ccolor = self.get_contour_color(org_image, c)
+        ccolor = self.get_contour_color(color_detect_image, c)
         print(f"Contour has color: {ccolor}")
         x, y, w, h = cv2.boundingRect(c)
-        cv2.putText(image, str(ccolor), (x, y + 30), font, 1, (0,0,0), 2, cv2.LINE_AA)
+        cv2.putText(image, str(ccolor), (x, y + 30), font, 0.65, (100,100,0), 1, cv2.LINE_AA)
     cv2.imwrite(self.image, image)
 
   def detectWhite(img):
